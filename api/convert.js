@@ -28,7 +28,7 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Step 1: Download the M4A from Supabase (with auth header)
+    // Step 1: Download the file from Supabase (with auth header)
     console.log('Downloading from: ' + sourceUrl);
     const downloadRes = await fetch(sourceUrl, {
       headers: {
@@ -39,12 +39,25 @@ module.exports = async (req, res) => {
       const errText = await downloadRes.text();
       throw new Error('Download failed: ' + downloadRes.status + ' ' + errText);
     }
-    const audioBuffer = Buffer.from(await downloadRes.arrayBuffer());
+
+    let audioBuffer = Buffer.from(await downloadRes.arrayBuffer());
     console.log('Downloaded: ' + audioBuffer.length + ' bytes');
 
-    // Verify we got actual audio data, not an error page
+    // Check if the data is a JSON-serialized Buffer (n8n bug workaround)
+    // If so, reconstruct the real binary from the JSON
+    if (audioBuffer.length > 10) {
+      const start = audioBuffer.slice(0, 20).toString('utf8');
+      if (start.startsWith('{"type":"Buffer"')) {
+        console.log('Detected JSON Buffer format - reconstructing binary');
+        const jsonData = JSON.parse(audioBuffer.toString('utf8'));
+        audioBuffer = Buffer.from(jsonData.data);
+        console.log('Reconstructed binary: ' + audioBuffer.length + ' bytes');
+      }
+    }
+
+    // Verify we have actual audio data
     if (audioBuffer.length < 1000) {
-      throw new Error('Downloaded file too small (' + audioBuffer.length + ' bytes), likely not audio. Content: ' + audioBuffer.toString('utf8').substring(0, 200));
+      throw new Error('File too small (' + audioBuffer.length + ' bytes)');
     }
 
     writeFileSync(inputPath, audioBuffer);
