@@ -1,0 +1,7 @@
+{
+  "name": "clara-converter-v2",
+  "version": "2.0.0",
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "functions": {
+    "api/convert.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    }
+  },
+  "routes": [
+    { "src": "/api/health", "dest": "/api/health.js" },
+    { "src": "/api/convert", "dest": "/api/convert.js" }
+  ]
+}
