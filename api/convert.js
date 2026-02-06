@@ -28,7 +28,7 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Step 1: Download the file from Supabase (with auth header)
+    // Step 1: Download the file from Supabase
     console.log('Downloading from: ' + sourceUrl);
     const downloadRes = await fetch(sourceUrl, {
       headers: {
@@ -43,22 +43,37 @@ module.exports = async (req, res) => {
     let audioBuffer = Buffer.from(await downloadRes.arrayBuffer());
     console.log('Downloaded: ' + audioBuffer.length + ' bytes');
 
-    // Check if the data is a JSON-serialized Buffer (n8n bug workaround)
-    // If so, reconstruct the real binary from the JSON
+    // Detect and handle different storage formats from n8n
     if (audioBuffer.length > 10) {
-      const start = audioBuffer.slice(0, 20).toString('utf8');
+      const start = audioBuffer.slice(0, 30).toString('utf8');
+      
+      // Format 1: JSON Buffer from n8n {"type":"Buffer","data":[...]}
       if (start.startsWith('{"type":"Buffer"')) {
         console.log('Detected JSON Buffer format - reconstructing binary');
         const jsonData = JSON.parse(audioBuffer.toString('utf8'));
         audioBuffer = Buffer.from(jsonData.data);
-        console.log('Reconstructed binary: ' + audioBuffer.length + ' bytes');
+        console.log('Reconstructed: ' + audioBuffer.length + ' bytes');
       }
+      // Format 2: Base64 encoded string (starts with letters/numbers, no binary)
+      else if (/^[A-Za-z0-9+/]/.test(start) && !start.includes('\x00')) {
+        // Check if it looks like base64 (no null bytes, valid chars)
+        const sample = audioBuffer.slice(0, 100).toString('utf8');
+        if (/^[A-Za-z0-9+/=\s]+$/.test(sample)) {
+          console.log('Detected base64 format - decoding');
+          audioBuffer = Buffer.from(audioBuffer.toString('utf8'), 'base64');
+          console.log('Decoded: ' + audioBuffer.length + ' bytes');
+        }
+      }
+      // Format 3: Raw binary (starts with ftyp or similar) - use as-is
     }
 
-    // Verify we have actual audio data
     if (audioBuffer.length < 1000) {
-      throw new Error('File too small (' + audioBuffer.length + ' bytes)');
+      throw new Error('File too small after processing (' + audioBuffer.length + ' bytes)');
     }
+
+    // Verify it looks like audio (check for ftyp header)
+    const header = audioBuffer.slice(0, 12).toString('utf8');
+    console.log('File header: ' + header.replace(/[^\x20-\x7E]/g, '.'));
 
     writeFileSync(inputPath, audioBuffer);
 
@@ -84,7 +99,8 @@ module.exports = async (req, res) => {
       method: 'POST',
       headers: {
         'Authorization': 'Bearer ' + supabaseKey,
-        'Content-Type': 'audio/mpeg'
+        'Content-Type': 'audio/mpeg',
+        'x-upsert': 'true'
       },
       body: mp3Buffer
     });
