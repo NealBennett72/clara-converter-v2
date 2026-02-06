@@ -28,14 +28,24 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Step 1: Download the M4A from Supabase
+    // Step 1: Download the M4A from Supabase (with auth header)
     console.log('Downloading from: ' + sourceUrl);
-    const downloadRes = await fetch(sourceUrl);
+    const downloadRes = await fetch(sourceUrl, {
+      headers: {
+        'Authorization': 'Bearer ' + supabaseKey
+      }
+    });
     if (!downloadRes.ok) {
-      throw new Error('Download failed: ' + downloadRes.status);
+      const errText = await downloadRes.text();
+      throw new Error('Download failed: ' + downloadRes.status + ' ' + errText);
     }
     const audioBuffer = Buffer.from(await downloadRes.arrayBuffer());
     console.log('Downloaded: ' + audioBuffer.length + ' bytes');
+
+    // Verify we got actual audio data, not an error page
+    if (audioBuffer.length < 1000) {
+      throw new Error('Downloaded file too small (' + audioBuffer.length + ' bytes), likely not audio. Content: ' + audioBuffer.toString('utf8').substring(0, 200));
+    }
 
     writeFileSync(inputPath, audioBuffer);
 
